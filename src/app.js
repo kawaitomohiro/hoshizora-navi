@@ -725,7 +725,7 @@ function openTime() {
 function setTime(t) { S.live = false; S.time = t; timeBase = new Date(t); const tr = $('#tr'); if (tr) tr.value = 0; updateSky(); showBT(); }
 function showBT() { const e = $('#bt'); if (e) e.textContent = fmtDate(S.time) + ' ' + fmtTime(S.time); }
 function updateTimeChip() {
-  $('#timeText').textContent = (innerWidth < 480 ? (S.time.getMonth() + 1) + '/' + S.time.getDate() : fmtDate(S.time)) + ' ' + fmtTime(S.time);
+  $('#timeText').textContent = innerWidth < 420 ? fmtTime(S.time) : (innerWidth < 600 ? (S.time.getMonth() + 1) + '/' + S.time.getDate() : fmtDate(S.time)) + ' ' + fmtTime(S.time); // せまい画面は時刻だけ（日付は「じかん」に出る）
   const b = $('#liveBadge'); b.textContent = S.live ? 'いま' : S.play ? '早送り' : innerWidth < 480 ? '別の時間' : 'ちがう時間'; b.classList.toggle('off', !S.live); b.classList.toggle('play', !!S.play); $('#timeChip').classList.toggle('off', !S.live);
 }
 
@@ -1015,6 +1015,40 @@ document.querySelectorAll('#nav button').forEach(b => b.onclick = () => {
 $('#placeChip').onclick = openPlace;
 $('#timeChip').onclick = openTime;
 $('#setChip').onclick = openSettings;
+
+/* ---------- 全画面 ---------- */
+// iPad・Android・Chromebook はブラウザの全画面。iPhone は全画面のしくみが無いので「ホーム画面に追加」を案内する
+// ホーム画面から開いたかは、起動したときに1回だけ見る（全画面にした後は display-mode が fullscreen になる端末があるため）
+const launchedStandalone = matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches || navigator.standalone === true;
+const isStandalone = () => launchedStandalone;
+const fsElement = () => document.fullscreenElement || document.webkitFullscreenElement;
+const fsAble = () => { const el = document.documentElement; return !!(el.requestFullscreen || el.webkitRequestFullscreen) && (document.fullscreenEnabled || document.webkitFullscreenEnabled); };
+const isIOS = /iP(hone|od|ad)/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+function showHomeGuide() {
+  const share = '<svg viewBox="0 0 24 24"><path d="M12 3v12M7.5 7.5 12 3l4.5 4.5M5 11v9h14v-9" fill="none" stroke="#ffd54a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  ask(`アドレスバーのない、広い画面で使うには<ol><li>ブラウザの 共有ボタン ${share} をおす</li><li>「ホーム画面に追加」をえらぶ</li><li>ホーム画面にできた「ほしぞらナビ」から ひらく</li></ol><span style="font-size:15px;color:var(--sub)">ホーム画面から ひらくと、スタンプや場所の設定は べつになります。</span>`, [['わかった', null]]);
+}
+function toggleFullscreen() {
+  if (fsElement()) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
+  if (fsAble()) {
+    const el = document.documentElement, r = (el.requestFullscreen || el.webkitRequestFullscreen).call(el);
+    if (r && r.catch) r.catch(fsFail);
+  } else if (isIOS) showHomeGuide();
+  else toast('このブラウザでは、全画面にできません。');
+}
+function updateFsChip() {
+  const on = !!fsElement();
+  $('#fsChip').style.display = isStandalone() ? 'none' : '';
+  $('#fsIcon').setAttribute('d', on ? 'M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5' : 'M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5');
+  $('#fsChip').setAttribute('aria-label', on ? '全画面をやめる' : '全画面');
+}
+$('#fsChip').onclick = toggleFullscreen;
+document.addEventListener('fullscreenchange', () => { updateFsChip(); setTimeout(resize, 200); });
+document.addEventListener('webkitfullscreenchange', () => { updateFsChip(); setTimeout(resize, 200); });
+const fsFail = () => { isIOS ? showHomeGuide() : toast('このブラウザでは、全画面にできませんでした。'); };
+document.addEventListener('fullscreenerror', fsFail);
+document.addEventListener('webkitfullscreenerror', fsFail);
+updateFsChip();
 $('#viewChip').onclick = () => sheetKind === 'view' ? closeSheet() : openView();
 $('#toNight').onclick = () => { const t = new Date(S.time); if (t.getHours() < 12) t.setDate(t.getDate() - 1); t.setHours(20, 0, 0, 0); setTime(t); toast('夜8時の空にしました。'); };
 

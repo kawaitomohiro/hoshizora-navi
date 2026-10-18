@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#050b1e">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ほしぞらナビ">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
 <title>ほしぞらナビ</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap" rel="stylesheet">
@@ -77,7 +83,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 #nav button:active{transform:scale(.94)}
 /* シート */
 .sheet{position:fixed;left:0;right:0;bottom:var(--navh);z-index:10;background:var(--panel);border-top:1px solid var(--line);
-  border-radius:24px 24px 0 0;padding:14px 16px 16px;max-height:calc(100% - var(--navh) - 70px);overflow:auto;
+  border-radius:24px 24px 0 0;padding:14px 16px 16px;max-height:calc(100% - var(--navh) - 70px - env(safe-area-inset-top));overflow:auto;
   transform:translateY(calc(100% + var(--navh) + 10px));transition:transform .28s cubic-bezier(.2,.8,.2,1);touch-action:pan-y;-webkit-user-select:text;user-select:text;
   max-width:760px;margin:0 auto;box-shadow:0 -10px 40px rgba(0,0,0,.5)}
 .sheet.open{transform:translateY(0)}
@@ -177,6 +183,8 @@ input[type=range]{width:100%;height:44px;accent-color:var(--gold)}
 #dialog{position:fixed;inset:0;z-index:45;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:20px}
 #dialog .box{background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:20px;max-width:420px;width:100%;text-align:center}
 #dialog .box p{font-size:18px;line-height:1.7;margin:0 0 14px}
+#dialog .box ol{text-align:left;font-size:18px;line-height:1.8;margin:0 0 14px;padding-left:1.4em}
+#dialog .box ol svg{width:22px;height:22px;vertical-align:-4px}
 #found{position:fixed;left:50%;top:30%;transform:translate(-50%,-50%);z-index:8;display:none;background:var(--gold);color:#3a2500;
   font-size:26px;font-weight:900;padding:14px 26px;border-radius:999px;box-shadow:0 0 30px rgba(255,213,74,.7);animation:pop .4s}
 @keyframes pop{from{transform:translate(-50%,-50%) scale(.3)}to{transform:translate(-50%,-50%) scale(1)}}
@@ -228,7 +236,7 @@ input[type=range]{width:100%;height:44px;accent-color:var(--gold)}
   #start .btn{padding:12px;margin:8px 0}
 }
 @media (max-width:520px){ #viewChip span{display:none} }
-@media (max-width:420px){ #top{gap:6px;padding-left:8px;padding-right:8px} .chip{padding:8px 10px} #liveBadge.off:not(.play){display:none} #timeChip.off{border-color:var(--gold);color:var(--gold)} }
+@media (max-width:420px){ #top{gap:5px;padding-left:6px;padding-right:6px} .chip{padding:8px 9px} #placeName{display:none} #liveBadge.off:not(.play){display:none} #timeChip.off{border-color:var(--gold);color:var(--gold)} }
 @media (min-width:900px){ .lbl{font-size:15px} .lbl.con{font-size:17px} }
 </style>
 </head>
@@ -242,9 +250,10 @@ input[type=range]{width:100%;height:44px;accent-color:var(--gold)}
 <svg id="cross" viewBox="0 0 34 34"><circle cx="17" cy="17" r="13" fill="none" stroke="#fff" stroke-width="2"/><path d="M17 0v9M17 25v9M0 17h9M25 17h9" stroke="#fff" stroke-width="2"/></svg>
 
 <div id="top">
-  <button class="chip" id="placeChip"><svg viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z" fill="#ff9fc4"/></svg><span id="placeName">東京</span></button>
+  <button class="chip" id="placeChip" aria-label="見る場所"><svg viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z" fill="#ff9fc4"/></svg><span id="placeName">東京</span></button>
   <button class="chip" id="timeChip"><span id="timeText"></span><b class="badge" id="liveBadge">いま</b></button>
   <button class="chip" id="viewChip" aria-label="見え方"><svg viewBox="0 0 24 24"><path d="M1.5 12S5.5 5 12 5s10.5 7 10.5 7-4 7-10.5 7S1.5 12 1.5 12z" fill="none" stroke="#dfe7ff" stroke-width="2"/><circle cx="12" cy="12" r="3.2" fill="#dfe7ff"/></svg><span>見え方</span></button>
+  <button class="chip" id="fsChip" aria-label="全画面"><svg viewBox="0 0 24 24"><path id="fsIcon" d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" fill="none" stroke="#dfe7ff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
   <button class="chip" id="setChip" aria-label="せってい"><svg viewBox="0 0 24 24"><path d="M19.4 13a7.5 7.5 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-1.7-1L15 3.5h-4l-.4 2.5a7.4 7.4 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a7.5 7.5 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7.4 7.4 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7.4 7.4 0 0 0 1.7-1l2.4 1 2-3.4zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" fill="#dfe7ff" transform="translate(-1 0)"/></svg></button>
 </div>
 <div id="hud"></div>
@@ -1178,7 +1187,7 @@ function openTime() {
 function setTime(t) { S.live = false; S.time = t; timeBase = new Date(t); const tr = $('#tr'); if (tr) tr.value = 0; updateSky(); showBT(); }
 function showBT() { const e = $('#bt'); if (e) e.textContent = fmtDate(S.time) + ' ' + fmtTime(S.time); }
 function updateTimeChip() {
-  $('#timeText').textContent = (innerWidth < 480 ? (S.time.getMonth() + 1) + '/' + S.time.getDate() : fmtDate(S.time)) + ' ' + fmtTime(S.time);
+  $('#timeText').textContent = innerWidth < 420 ? fmtTime(S.time) : (innerWidth < 600 ? (S.time.getMonth() + 1) + '/' + S.time.getDate() : fmtDate(S.time)) + ' ' + fmtTime(S.time); // せまい画面は時刻だけ（日付は「じかん」に出る）
   const b = $('#liveBadge'); b.textContent = S.live ? 'いま' : S.play ? '早送り' : innerWidth < 480 ? '別の時間' : 'ちがう時間'; b.classList.toggle('off', !S.live); b.classList.toggle('play', !!S.play); $('#timeChip').classList.toggle('off', !S.live);
 }
 
@@ -1468,6 +1477,40 @@ document.querySelectorAll('#nav button').forEach(b => b.onclick = () => {
 $('#placeChip').onclick = openPlace;
 $('#timeChip').onclick = openTime;
 $('#setChip').onclick = openSettings;
+
+/* ---------- 全画面 ---------- */
+// iPad・Android・Chromebook はブラウザの全画面。iPhone は全画面のしくみが無いので「ホーム画面に追加」を案内する
+// ホーム画面から開いたかは、起動したときに1回だけ見る（全画面にした後は display-mode が fullscreen になる端末があるため）
+const launchedStandalone = matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches || navigator.standalone === true;
+const isStandalone = () => launchedStandalone;
+const fsElement = () => document.fullscreenElement || document.webkitFullscreenElement;
+const fsAble = () => { const el = document.documentElement; return !!(el.requestFullscreen || el.webkitRequestFullscreen) && (document.fullscreenEnabled || document.webkitFullscreenEnabled); };
+const isIOS = /iP(hone|od|ad)/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+function showHomeGuide() {
+  const share = '<svg viewBox="0 0 24 24"><path d="M12 3v12M7.5 7.5 12 3l4.5 4.5M5 11v9h14v-9" fill="none" stroke="#ffd54a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  ask(`アドレスバーのない、広い画面で使うには<ol><li>ブラウザの 共有ボタン ${share} をおす</li><li>「ホーム画面に追加」をえらぶ</li><li>ホーム画面にできた「ほしぞらナビ」から ひらく</li></ol><span style="font-size:15px;color:var(--sub)">ホーム画面から ひらくと、スタンプや場所の設定は べつになります。</span>`, [['わかった', null]]);
+}
+function toggleFullscreen() {
+  if (fsElement()) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
+  if (fsAble()) {
+    const el = document.documentElement, r = (el.requestFullscreen || el.webkitRequestFullscreen).call(el);
+    if (r && r.catch) r.catch(fsFail);
+  } else if (isIOS) showHomeGuide();
+  else toast('このブラウザでは、全画面にできません。');
+}
+function updateFsChip() {
+  const on = !!fsElement();
+  $('#fsChip').style.display = isStandalone() ? 'none' : '';
+  $('#fsIcon').setAttribute('d', on ? 'M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5' : 'M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5');
+  $('#fsChip').setAttribute('aria-label', on ? '全画面をやめる' : '全画面');
+}
+$('#fsChip').onclick = toggleFullscreen;
+document.addEventListener('fullscreenchange', () => { updateFsChip(); setTimeout(resize, 200); });
+document.addEventListener('webkitfullscreenchange', () => { updateFsChip(); setTimeout(resize, 200); });
+const fsFail = () => { isIOS ? showHomeGuide() : toast('このブラウザでは、全画面にできませんでした。'); };
+document.addEventListener('fullscreenerror', fsFail);
+document.addEventListener('webkitfullscreenerror', fsFail);
+updateFsChip();
 $('#viewChip').onclick = () => sheetKind === 'view' ? closeSheet() : openView();
 $('#toNight').onclick = () => { const t = new Date(S.time); if (t.getHours() < 12) t.setDate(t.getDate() - 1); t.setHours(20, 0, 0, 0); setTime(t); toast('夜8時の空にしました。'); };
 

@@ -18,4 +18,8 @@ for k, f in [('DATA', 'data.js'), ('CONTENT', 'content.js'), ('ASTRO', 'astro.js
     t = t.replace('/*' + k + '*/', (rd(f) + (artjs if k == 'DATA' else '')).replace('</script', '<\\/script'))
 os.makedirs(os.path.join(H, 'docs'), exist_ok=True)
 open(os.path.join(H, 'docs', 'index.html'), 'w', encoding='utf-8').write(t)
+# ホーム画面に追加したときのアイコンと設定（pwa/ → docs/）
+import shutil
+for f in os.listdir(os.path.join(H, 'pwa')):
+    shutil.copy(os.path.join(H, 'pwa', f), os.path.join(H, 'docs', f))
 print('ok', len(t.encode()) // 1024, 'KB')
