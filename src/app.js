@@ -424,12 +424,12 @@ async function startCam() {
     showLoading('カメラをじゅんびしています…');
     stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
     const v = $('#video'); v.srcObject = stream; v.style.display = 'block'; await v.play().catch(() => {});
-    S.cam = true; dome.visible = false; $('#camBtn').classList.add('on'); hideLoading(); camFov(); updateSky();
+    S.cam = true; document.body.classList.add('cam'); dome.visible = false; $('#camBtn').classList.add('on'); hideLoading(); camFov(); updateSky();
   } catch (e) { hideLoading(); toast('カメラを使えませんでした。<br>カメラなしでも星はさがせます。'); }
 }
 function stopCam() {
   if (stream) stream.getTracks().forEach(t => t.stop()); stream = null;
-  $('#video').style.display = 'none'; S.cam = false; dome.visible = true; $('#camBtn').classList.remove('on'); S.fov = 70; updateSky();
+  $('#video').style.display = 'none'; S.cam = false; document.body.classList.remove('cam'); dome.visible = true; $('#camBtn').classList.remove('on'); S.fov = 70; updateSky();
 }
 function camFov() { const long = 64, a = innerWidth / innerHeight; S.fov = a < 0.75 ? long : 2 * Math.atan(Math.tan(long / 2 * D2R) / a) * R2D; }
 $('#camBtn').onclick = () => S.cam ? stopCam() : startCam();
@@ -517,7 +517,7 @@ function openInfo(id) {
     if (a === 'moonp') openMoon();
     if (a === 'tip') doTip(o);
   });
-  if (o.kind !== 'tip') setTarget(id, true);
+  if (o.kind !== 'tip') { setTarget(id, true); keepVisible(id); }
 }
 function openStar(i) {
   const s = SKY.stars[i], cid = SKY.conIds[s[4]], cn = cid ? conName(cid) : '';
@@ -817,7 +817,7 @@ function startQuiz() {
 function stopFlyTarget() { S.target = null; S.targetActive = false; $('#targetChip').style.display = 'none'; }
 function showQ() {
   const z = S.quiz, q = z.qs[z.i]; z.answered = false; S.quizCon = null;
-  if (q.type === 'shape') { S.quizCon = q.con; const c = conCenter[q.con], a = ASTRO.altAz(c.ra, c.dec, S.time, S.lat, S.lon); flyTo(a.az, a.alt - 12, 80); }
+  if (q.type === 'shape') { S.quizCon = q.con; const c = conCenter[q.con], a = ASTRO.altAz(c.ra, c.dec, S.time, S.lat, S.lon); flyTo(a.az, a.alt - (RAIL.matches ? 0 : 12), 80); }
   const box = $('#quizBox');
   box.innerHTML = `<div class="qn"><span>${z.i + 1} / ${z.qs.length} もん</span><button id="qEnd" style="color:var(--sub);font-weight:700">やめる</button></div><div class="q">${esc(q.q)}</div><div class="choices">${q.ch.map(c => `<button>${esc(c)}</button>`).join('')}</div><div id="qExp"></div>`;
   box.querySelectorAll('.choices button').forEach(b => b.onclick = () => answer(b));
@@ -870,9 +870,21 @@ function hideLoading() { $('#loading').style.display = 'none'; }
 
 /* ---------- 毎フレーム ---------- */
 const fwd = new THREE.Vector3();
+const RAIL = matchMedia('(orientation:landscape) and (max-height:560px)');
+let cover = 0; // 右の列と右から出た説明でかくれる幅。空のまん中をその分左へずらす
+function coverTarget() { if (!RAIL.matches || S.cam) return 0; let c = $('#nav').offsetWidth; if (S.quiz) c += $('#quizBox').offsetWidth; return c; }
+// 横向きで説明を右から出したとき、その星が説明の下にかくれるなら、見える所まで向きを回す
+function keepVisible(id) {
+  if (!RAIL.matches || S.sensor || S.quiz) return;
+  const o = OBJ[id]; if (!o || !o.pos) return; const p = o.pos(); if (!p) return;
+  const sp = screenOf(eq(p.ra, p.dec, R).applyMatrix4(sky.matrix)); if (!sp) return;
+  const left = innerWidth - $('#nav').offsetWidth - sheet.offsetWidth;
+  if (sp.x > left - 50) flyTo(S.yaw + (sp.x - left / 2) * S.fov / innerHeight, S.pitch);
+}
 let lastT = performance.now(), lastSky = 0, foundShown = false;
 function resize() { renderer.setSize(innerWidth, innerHeight, false); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); if (S.cam) camFov(); }
 addEventListener('resize', resize);
+addEventListener('orientationchange', () => setTimeout(resize, 300)); // iPadは回した直後の大きさが遅れて変わる
 function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.min(0.1, (now - lastT) / 1000); lastT = now;
@@ -881,6 +893,9 @@ function frame(now) {
   stepFly(now);
   if (S.sensor && ori) camera.quaternion.slerp(sensorQuat(), 0.22);
   else camera.rotation.set(S.pitch * D2R, -S.yaw * D2R, 0);
+  const ct = coverTarget(); cover = Math.abs(ct - cover) < 1 ? ct : cover + (ct - cover) * 0.2;
+  camera.aspect = (innerWidth + cover) / innerHeight;
+  if (cover > 0.5) camera.setViewOffset(innerWidth + cover, innerHeight, cover, 0, innerWidth, innerHeight); else camera.clearViewOffset();
   camera.fov = S.fov; camera.updateProjectionMatrix(); camera.updateMatrixWorld();
   const sc = renderer.getPixelRatio() * Math.pow(70 / S.fov, 0.45) * Math.min(1.25, Math.max(0.85, innerHeight / 800));
   starMat.uniforms.scale.value = sc; planetMat.uniforms.scale.value = sc; window.__milky.uniforms.scale.value = renderer.getPixelRatio() * 70 / S.fov;
@@ -935,7 +950,8 @@ function updateLabels() {
   else if (S.target && OBJ[S.target] && OBJ[S.target].pos) { const p = OBJ[S.target].pos(); if (p) tv3 = eq(p.ra, p.dec, R).applyMatrix4(sky.matrix); }
   if (!tv3) { ring.style.display = arrow.style.display = hint.style.display = 'none'; $('#found').style.display = 'none'; return; }
   const sp = fwd.dot(tv3.clone().normalize()) > 0 ? screenOf(tv3) : null;
-  const inView = sp && sp.x > 30 && sp.x < W - 30 && sp.y > 90 && sp.y < H - 110;
+  const rail = RAIL.matches, cx = (W - cover) / 2, cy = rail ? H / 2 : H / 2 - 10;
+  const inView = sp && sp.x > 30 && sp.x < W - Math.max(cover, rail ? $('#nav').offsetWidth : 0) - 30 && sp.y > (rail ? 50 : 90) && sp.y < H - (rail ? 40 : 110);
   if (inView) {
     ring.style.display = 'block'; ring.style.transform = `translate(${sp.x}px,${sp.y}px)`; arrow.style.display = 'none';
     const big = S.target && OBJ[S.target] && (OBJ[S.target].kind === 'con' || OBJ[S.target].kind === 'ast'); ring.style.width = ring.style.height = big ? '120px' : '64px'; ring.style.margin = big ? '-60px 0 0 -60px' : '-32px 0 0 -32px';
@@ -943,16 +959,16 @@ function updateLabels() {
   if (!inView && S.target && S.targetActive && !S.quiz) {
     const c = tv3.clone().applyMatrix4(camera.matrixWorldInverse); let ang = Math.atan2(c.y, c.x);
     if (c.z > 0 && Math.hypot(c.x, c.y) < 1) ang = Math.PI / 2;
-    const rx = W / 2 - 50, ry = H / 2 - 130, k = Math.min(rx / Math.abs(Math.cos(ang) || 1e-6), ry / Math.abs(Math.sin(ang) || 1e-6));
+    const rx = (W - cover) / 2 - 50, ry = H / 2 - (rail ? 110 : 130), k = Math.min(rx / Math.abs(Math.cos(ang) || 1e-6), ry / Math.abs(Math.sin(ang) || 1e-6));
     arrow.style.display = 'block';
-    arrow.style.transform = `translate(${W / 2 + Math.cos(ang) * k}px,${H / 2 - 10 - Math.sin(ang) * k}px) rotate(${90 - ang * R2D}deg)`;
+    arrow.style.transform = `translate(${cx + Math.cos(ang) * k}px,${cy - Math.sin(ang) * k}px) rotate(${90 - ang * R2D}deg)`;
     hint.style.display = 'block';
     const deg = ang * R2D;
     hint.textContent = (deg > 45 && deg < 135 ? 'もっと上' : deg < -45 && deg > -135 ? 'もっと下' : Math.abs(deg) <= 45 ? 'もっと右' : 'もっと左') + 'に、' + OBJ[S.target].name;
   } else { arrow.style.display = 'none'; hint.style.display = 'none'; }
   // かざして見つけた
   if (S.sensor && S.target && S.targetActive && sp && !foundShown && tv3.y > 0 && (sunAlt < -6 || S.target === 'moon')) {
-    if (Math.hypot(sp.x - W / 2, sp.y - H / 2) < Math.min(W, H) * 0.12) {
+    if (Math.hypot(sp.x - cx, sp.y - H / 2) < Math.min(W, H) * 0.12) {
       foundShown = true; const f = $('#found'); f.style.display = 'block'; if (navigator.vibrate) navigator.vibrate([60, 40, 60]);
       setTimeout(() => { f.style.display = 'none'; if (S.target) openInfo(S.target); }, 1500);
     }
