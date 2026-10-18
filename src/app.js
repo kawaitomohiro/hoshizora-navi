@@ -24,6 +24,7 @@ const S = {
   lines: store.get('lines', store.get('allLines', false) ? 'all' : 'feat'),
   nameCon: store.get('nameCon', store.get('showNames', true)), nameStar: store.get('nameStar', store.get('showNames', true)), namePl: store.get('namePl', store.get('showNames', true)), showDir: store.get('showDir', true),
   showNames: store.get('showNames', true),
+  showArt: store.get('showArt', false),
   seeThru: store.get('seeThru', false),
   azNudge: (() => { const v = store.get('azNudge', 0); if (!store.get('nudgeV2', false)) { store.set('nudgeV2', true); if (Math.abs(v) > 45) { store.set('azNudge', 0); return 0; } } return v; })(),
   target: null, quiz: null, play: 0, quizCon: null
@@ -180,7 +181,7 @@ const starPts = new THREE.Points(starGeo, starMat); starPts.frustumCulled = fals
 
 // 線（太さのある帯で描く）
 function ribbon(segs, width, gapDeg, rad) {
-  const pos = [];
+  const pos = [], ctr = [];
   segs.forEach(([a, b]) => {
     const ang = a.angleTo(b); if (ang < 1e-4) return;
     const g = Math.min(gapDeg * D2R, ang * 0.3) / ang;
@@ -188,15 +189,19 @@ function ribbon(segs, width, gapDeg, rad) {
     const n = new THREE.Vector3().subVectors(B, A).cross(A.clone().add(B)).normalize().multiplyScalar(width / 2);
     const p1 = A.clone().add(n), p2 = A.clone().sub(n), p3 = B.clone().add(n), p4 = B.clone().sub(n);
     pos.push(p1.x, p1.y, p1.z, p2.x, p2.y, p2.z, p3.x, p3.y, p3.z, p3.x, p3.y, p3.z, p2.x, p2.y, p2.z, p4.x, p4.y, p4.z);
+    ctr.push(A.x, A.y, A.z, A.x, A.y, A.z, B.x, B.y, B.z, B.x, B.y, B.z, A.x, A.y, A.z, B.x, B.y, B.z);
   });
-  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); return g;
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('center', new THREE.Float32BufferAttribute(ctr, 3)); return g;
 }
+// 線の太さ：画面を寄せても太い帯にならないよう、寄せたぶん中心線へ細める（LINE_K を毎フレーム決める）
+const LINE_K = { value: 1 };
+const thin = m => { m.onBeforeCompile = sh => { sh.uniforms.wk = LINE_K; sh.vertexShader = 'attribute vec3 center;uniform float wk;\n' + sh.vertexShader.replace('#include <begin_vertex>', 'vec3 transformed = center + (position - center) * wk;'); }; return m; };
 const lineSegs = id => { const out = []; SKY.lines[id].forEach(l => { for (let i = 1; i < l.length; i++) out.push([eq(l[i - 1][0], l[i - 1][1]), eq(l[i][0], l[i][1])]); }); return out; };
 const FEAT = new Set(CONS.map(c => c.id));
 const conMesh = {};
-const lineMatFeat = () => new THREE.MeshBasicMaterial({ color: 0x6fa8ff, transparent: true, opacity: 0.75, depthWrite: false, side: THREE.DoubleSide });
+const lineMatFeat = () => thin(new THREE.MeshBasicMaterial({ color: 0x6fa8ff, transparent: true, opacity: 0.75, depthWrite: false, side: THREE.DoubleSide }));
 const minorGroup = new THREE.Group(); sky.add(minorGroup);
-const minorMat = new THREE.MeshBasicMaterial({ color: 0x6f86c0, transparent: true, opacity: 0.32, depthWrite: false, side: THREE.DoubleSide });
+const minorMat = thin(new THREE.MeshBasicMaterial({ color: 0x6f86c0, transparent: true, opacity: 0.32, depthWrite: false, side: THREE.DoubleSide }));
 for (const id in SKY.lines) {
   if (FEAT.has(id)) { const m = new THREE.Mesh(ribbon(lineSegs(id), 4.6, 0.45, R * 0.99), lineMatFeat()); m.frustumCulled = false; sky.add(m); conMesh[id] = m; }
   else { const m = new THREE.Mesh(ribbon(lineSegs(id), 2.6, 0.4, R * 0.99), minorMat); m.frustumCulled = false; minorGroup.add(m); }
@@ -204,9 +209,49 @@ for (const id in SKY.lines) {
 const astMesh = {};
 ASTERISMS.forEach(a => {
   const segs = []; for (let i = 1; i < a.stars.length; i++) segs.push([eq(HIP[a.stars[i - 1]][0], HIP[a.stars[i - 1]][1]), eq(HIP[a.stars[i]][0], HIP[a.stars[i]][1])]);
-  const m = new THREE.Mesh(ribbon(segs, a.id === 'hokuto' ? 5 : 4, 1.6, R * 0.985), new THREE.MeshBasicMaterial({ color: 0xff8fc0, transparent: true, opacity: 0.45, depthWrite: false, side: THREE.DoubleSide }));
+  const m = new THREE.Mesh(ribbon(segs, a.id === 'hokuto' ? 5 : 4, 1.6, R * 0.985), thin(new THREE.MeshBasicMaterial({ color: 0xff8fc0, transparent: true, opacity: 0.45, depthWrite: false, side: THREE.DoubleSide })));
   m.frustumCulled = false; sky.add(m); astMesh[a.id] = m;
 });
+
+// 星座の絵（神話のすがた）。絵の点(px,py)を心射図法で空の球面へもどし、板を球面にそわせる
+const artMesh = {};
+const ARTS = typeof ART === 'undefined' ? {} : ART;
+function artFor(id) {
+  if (artMesh[id] !== undefined) return artMesh[id];
+  const a = ARTS[id]; if (!a) return (artMesh[id] = null);
+  const ra = a.ra0 * D2R, de = a.dec0 * D2R;
+  const c0 = eq(a.ra0, a.dec0), eE = new THREE.Vector3(-Math.sin(ra), Math.cos(ra), 0), eN = new THREE.Vector3(-Math.sin(de) * Math.cos(ra), -Math.sin(de) * Math.sin(ra), Math.cos(de));
+  const g = new THREE.PlaneGeometry(1, 1, 24, 24), pos = g.attributes.position, uv = g.attributes.uv;
+  for (let i = 0; i < pos.count; i++) {
+    const xi = (a.N / 2 - uv.getX(i) * a.N) / a.k, et = (a.N / 2 - (1 - uv.getY(i)) * a.N) / a.k;
+    const v = c0.clone().addScaledVector(eE, xi).addScaledVector(eN, et).normalize().multiplyScalar(R * 0.98);
+    pos.setXYZ(i, v.x, v.y, v.z);
+  }
+  g.computeBoundingSphere();
+  const img = new Image(), tex = new THREE.Texture(img);
+  img.onload = () => { tex.needsUpdate = true; };
+  img.src = a.img;
+  // 黒に近い所（JPEGのにじみ）は消して、板のふちが見えないようにする
+  const mat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+    uniforms: { map: { value: tex }, opacity: { value: 0 } },
+    vertexShader: 'varying vec2 vU;void main(){vU=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
+    fragmentShader: 'uniform sampler2D map;uniform float opacity;varying vec2 vU;void main(){vec3 c=texture2D(map,vU).rgb;c=max(c-0.08,0.0)*1.09;vec2 e=min(vU,1.0-vU);c*=smoothstep(0.0,0.09,min(e.x,e.y));gl_FragColor=vec4(c*opacity,1.0);}'
+  });
+  Object.defineProperty(mat, 'opacity', { get: () => mat.uniforms.opacity.value, set: v => { if (mat.uniforms) mat.uniforms.opacity.value = v; } });
+  const m = new THREE.Mesh(g, mat);
+  m.frustumCulled = false; m.renderOrder = -3; m.visible = false; sky.add(m);
+  return (artMesh[id] = m);
+}
+
+// 絵のある星座をえらんだら、絵がちょうど画面に入る大きさまで寄る（小さい星座が目あての丸にかくれないように）
+function artFov(id, alt) {
+  const a = ARTS[id], w = 2 * Math.atan(a.N / 2 / a.k) * 0.8 * 1.25, asp = innerWidth / innerHeight;
+  const v = asp < 1 ? 2 * Math.atan(Math.tan(w / 2) / asp) : w; // たて長の画面では横はばに合わせる
+  const f = Math.max(0.5, (innerHeight - 190) / innerHeight); // 上の札と下のボタンの帯の分をのぞく
+  return Math.max(alt > 80 ? 28 : 22, Math.min(85, // 真上近くは見上げが85°までなので少し引く
+    2 * Math.atan(Math.tan(v / 2) / f) * R2D));
+}
 
 // 惑星
 const planetMat = starMat.clone(); planetMat.uniforms = { scale: { value: 1 }, magLim: { value: 9 }, bright: { value: 1 } };
@@ -607,7 +652,7 @@ function setTarget(id, quiet) {
   $('#targetName').textContent = 'さがしている：' + o.name;
   $('#targetChip').style.display = quiet ? 'none' : 'flex';
   if (!quiet) {
-    flyTo(a.az, a.alt, o.kind === 'con' || o.kind === 'ast' ? 75 : 55);
+    flyTo(a.az, a.alt, ARTS[id] ? artFov(id, a.alt) : o.kind === 'con' || o.kind === 'ast' ? 75 : 55);
     if (a.alt < 0) toast(`${esc(o.name)}は、いまは地平線の下です。<br>地面をすかして見せています。`, 2600);
     foundShown = false;
   }
@@ -1024,6 +1069,15 @@ function frame(now) {
   const ha = S.target && OBJ[S.target] && OBJ[S.target].kind === 'ast' ? S.target : null;
   for (const id in astMesh) { astMesh[id].visible = !S.quiz && (S.showAst || id === ha); astMesh[id].material.opacity = id === ha ? 0.95 : 0.45; astMesh[id].material.color.set(id === ha ? 0xffd54a : 0xff8fc0); }
   minorGroup.visible = S.lines === 'all' && !S.quiz;
+  LINE_K.value = Math.max(0.3, Math.min(1, S.fov / 70));
+  // 星座の絵：えらんだ星座は濃く、「ぜんぶ見せる」のときはほかの星座もうすく。クイズ中は答えになるので出さない
+  for (const id in ARTS) {
+    const want = S.quiz ? 0 : id === hl ? 0.9 : S.showArt ? 0.28 : 0;
+    if (!want && !artMesh[id]) continue;
+    const m = artFor(id); if (!m) continue;
+    const o = m.material.opacity + (want - m.material.opacity) * Math.min(1, dt * 5);
+    m.material.opacity = Math.abs(o - want) < 0.01 ? want : o; m.visible = m.material.opacity > 0.005;
+  }
   const tgtBelow = S.target && OBJ[S.target] && OBJ[S.target].kind !== 'tip' && altAzOf(OBJ[S.target]).alt < 0;
   groundMat.opacity = S.quiz || S.seeThru || tgtBelow ? 0.45 : S.cam ? 0.35 : 0.9;
   // 月の光っている側を太陽へ向ける
@@ -1075,7 +1129,7 @@ function updateLabels() {
   const inView = sp && sp.x > 30 && sp.x < W - Math.max(cover, rail ? $('#nav').offsetWidth : 0) - 30 && sp.y > (rail ? 50 : 90) && sp.y < H - (rail ? 40 : 110);
   if (inView) {
     ring.style.display = 'block'; ring.style.transform = `translate(${sp.x}px,${sp.y}px)`; arrow.style.display = 'none';
-    const big = S.target && OBJ[S.target] && (OBJ[S.target].kind === 'con' || OBJ[S.target].kind === 'ast'); ring.style.width = ring.style.height = big ? '120px' : '64px'; ring.style.margin = big ? '-60px 0 0 -60px' : '-32px 0 0 -32px';
+    const big = S.target && OBJ[S.target] && (OBJ[S.target].kind === 'con' || OBJ[S.target].kind === 'ast'); ring.style.width = ring.style.height = big ? '120px' : '64px'; ring.style.opacity = S.target && ARTS[S.target] && !S.quiz ? '0.3' : ''; ring.style.margin = big ? '-60px 0 0 -60px' : '-32px 0 0 -32px';
   } else ring.style.display = 'none';
   if (!inView && S.target && S.targetActive && !S.quiz) {
     const c = tv3.clone().applyMatrix4(camera.matrixWorldInverse); let ang = Math.atan2(c.y, c.x);
