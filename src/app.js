@@ -533,7 +533,7 @@ function openInfo(id) {
   else if (o.kind !== 'sun') h += `<button class="btn main" data-a="find">空でさがす</button>`;
   if (o.kind === 'moon') h += `<button class="btn" data-a="moonp">月の形と動き</button>`;
   if (S.sensor && S.live && ['star', 'planet', 'moon'].includes(o.kind) && altAzOf(o).alt > 0) h += `<button class="btn" data-a="align">この${o.kind === 'moon' ? '月' : '星'}で方角を合わせる</button>`;
-  h += stampBtn(id) + '</div>';
+  h += stampBtn(id) + '</div>' + videoHtml(id);
   openSheet(h, 'info');
   sb.querySelectorAll('[data-a]').forEach(b => b.onclick = () => {
     const a = b.dataset.a;
@@ -545,6 +545,14 @@ function openInfo(id) {
     if (a === 'align') { closeSheet(); startAlign(id); }
   });
   if (o.kind !== 'tip') { setTarget(id, true); keepVisible(id); }
+}
+// 動画のリンク（名前のある星で動画が無いときは、その星座の動画）
+function videoHtml(id) {
+  let keys = VIDEOS[id];
+  if (!keys && OBJ[id] && OBJ[id].kind === 'star') keys = VIDEOS[OBJ[id].con];
+  if (!keys || !keys.length) return '';
+  const yt = 'https://www.youtube.com/watch?v=';
+  return `<div class="set"><div>動画で見る</div></div><div class="vids">` + keys.map(k => { const v = VIDEO_LIST[k]; return `<a class="vid" href="${yt + v[0]}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#e2577f"/><path d="M10 7.5l7 4.5-7 4.5z" fill="#fff"/></svg><span><b>${esc(v[1])}</b><small>${esc(v[2])}・${esc(v[3])}</small></span></a>`; }).join('') + `</div><p class="small">YouTube がべつの画面でひらきます。おうちの人や先生といっしょに見よう。学校の端末では見られないことがあります。</p>`;
 }
 function openStar(i) {
   const s = SKY.stars[i], cid = SKY.conIds[s[4]], cn = cid ? conName(cid) : '';
@@ -746,12 +754,12 @@ function openMoon() {
   let h = `<h2>月の形と動き</h2><div class="moonRow"><canvas id="mNow" width="220" height="220"></canvas><div><div style="font-size:20px;font-weight:900">${moonName(ph)}</div><div class="small">新月から${Math.round(ph.age)}日ごろの月</div>
   <div class="small" style="margin-top:6px">${a.alt > 0 ? `いまは<b style="color:#fff">${dirName(a.az)}の空</b>` : 'いまは地平線の下'}</div>
   <div class="small">${times}</div></div></div>
-  <div class="set"><div>うちゅうから見ると</div></div><div class="small">月を指でつかんで、地球のまわりを回してみよう。ほかの所を動かすと、見る向きがかわります。</div><div class="small">大きさときょりは、本当とはちがいます。</div><div id="moonHolder"></div>
+  <div class="set"><div>うちゅうから見ると</div></div><div class="small">月を指でつかんで、地球のまわりを回してみよう。ほかの所を動かすと、見る向きがかわります。</div><div class="small">大きさときょりは、本当とはちがいます。うちゅうから見る見方は、中学校でくわしく学びます。</div><div id="moonHolder"></div>
   <input type="range" id="mAge" min="0" max="29.5" step="0.1" value="${ph.age.toFixed(1)}" aria-label="月齢">
   <div class="moonRow" style="margin-top:0"><canvas id="mSee" width="160" height="160" style="width:80px;height:80px"></canvas><div class="small" id="mSeeT"></div></div>
   <p class="small">月は地球のまわりをまわっています。太陽の光が当たっている半分だけが光るので、地球から見ると形がかわって見えます。形は、約30日（およそ1か月）でもとにもどります。月も、東からのぼって南を通り、西へしずみます。</p>
   <div class="set"><div>これから30日の月（タップするとその日の夜の空になります）</div></div><div class="strip" id="strip"></div>
-  <div class="btns">${stampBtn('moon')}</div>`;
+  <div class="btns">${stampBtn('moon')}</div>${videoHtml('moon')}`;
   openSheet(h, 'moon');
   drawPhase($('#mNow'), ph.frac);
   const st = $('#strip'); const base = new Date(S.time); base.setHours(19, 0, 0, 0);
@@ -845,20 +853,54 @@ function drawMoonModel() {
 }
 
 /* ---------- クイズ ---------- */
+// きほん：4年「月と星」(ｱ)月の形と位置 (ｲ)星の明るさと色 (ｳ)星の集まりの並び方と位置／6年「月と太陽」月の輝いている側に太陽
+// [学年, 問題, 選択肢（1つ目が正解）, 説明, 空で見せるもの, グループ（同じグループは1回に1問だけ。答えが分かってしまうのをふせぐ）]
+const KIHON = [
+  ['4年', '月の形は、日によってどうなる？', ['かわって見える', 'いつも満月', 'いつも半月', '1年に1回だけかわる'], '月は三日月や満月など、日によって形がかわって見えます。'],
+  ['4年', '月は、1日のうちでどのように動く？', ['東から南を通って西へ', '西から南を通って東へ', '北から南へ', '動かない'], '月も太陽と同じように、東からのぼり、南の空を通って、西へしずみます。'],
+  ['4年', '月や星の位置を調べるとき、目じるしにするとよいものは？', ['木や建物', '雲', '飛行機', '自分の影'], '動かない木や建物を目じるしにすると、位置のかわり方がよくわかります。'],
+  ['4年', '方位を調べるときに使う道具は？', ['方位磁針', '虫めがね', '温度計', '電流計'], '方位磁針で東西南北をたしかめてから観察します。'],
+  ['4年', '空の星の明るさは？', ['明るい星と暗い星がある', 'みんな同じ明るさ', '夜中だけ明るい', '冬はみんな暗い'], '空には、明るさのちがう星があります。明るい星から1等星、2等星…とよびます。'],
+  ['4年', '星の色は？', ['青白い星や赤い星など、色がちがう', 'みんな白', 'みんな黄色', '日によってかわる'], '星には、青白い色や赤い色など、色のちがいがあります。'],
+  ['4年', 'さそり座の赤い1等星は？', ['アンタレス', 'ベガ', 'シリウス', 'リゲル'], 'アンタレスは赤い星の代表。夏の南の低い空で光ります。', 's80763'],
+  ['4年', 'オリオン座の赤い星は？', ['ベテルギウス', 'リゲル', 'デネブ', 'スピカ'], 'オリオン座では、赤いベテルギウスと青白いリゲルの色のちがいがよくわかります。', 's27989', 'ori'],
+  ['4年', 'オリオン座の青白い星は？', ['リゲル', 'ベテルギウス', 'アンタレス', 'アルデバラン'], 'リゲルは青白い星。オリオンの足もとで光ります。', 's24436', 'ori'],
+  ['4年', 'ベガ・デネブ・アルタイルをむすんだ形を何という？', ['夏の大三角', '冬の大三角', '北斗七星', '秋の四辺形'], '夏の夜、頭の上の高い空に見える大きな三角形です。', 'summer3', 's3'],
+  ['4年', '夏の大三角に入っていない星は？', ['アンタレス', 'ベガ', 'デネブ', 'アルタイル'], '夏の大三角は、ベガ（こと座）・デネブ（はくちょう座）・アルタイル（わし座）です。', 'summer3', 's3'],
+  ['4年', '七夕のおりひめ星（しょくじょ星）は？', ['ベガ', 'アルタイル', 'デネブ', 'アンタレス'], 'こと座のベガがおりひめ星、わし座のアルタイルがひこ星です。', 's91262', 's3'],
+  ['4年', '時間がたつと、星の集まり（星座）の並び方はどうなる？', ['かわらない', '大きくなる', 'くずれる', '星と星の間が広がる'], '並び方はかわりませんが、位置がかわります。', 'tip-move', 'narabi'],
+  ['4年', '時間がたつと、星の集まりの位置はどうなる？', ['かわる', 'かわらない', '消える', '小さくなる'], '星の集まりは、時間がたつと位置がかわります（並び方はかわりません）。', 'tip-move', 'narabi'],
+  ['4年', '南の空の星は、時間がたつとどのように動く？', ['東から南を通って西へ', '西から南を通って東へ', '南から北へ', '動かない'], '南の空の星も、太陽や月と同じように、東から南の空を通って西へ動いて見えます。（北の空の星は、北極星のまわりをまわります）', 'tip-move', 'move'],
+  ['4年（発展）', '北の空で、ほとんど動かない星は？', ['北極星', 'シリウス', 'ベガ', 'アンタレス'], '北極星は真北にあって、ほとんど動きません。ほかの北の星は、北極星のまわりをまわります。', 's11767', 'kita'],
+  ['4年（発展）', '北極星をさがす目じるしになる星のならびは？', ['北斗七星', '夏の大三角', 'すばる', 'オリオンの三つ星'], '北斗七星のひしゃくの先の2つの星を5倍のばすと、北極星があります。カシオペヤ座も目じるしになります。', 'hokuto', 'kita'],
+  ['6年', '月の光っている側には、何がある？', ['太陽', '地球', '北極星', '何もない'], '月の輝いている側に、太陽があります。', 'moon'],
+  ['6年', '月の形の見え方がかわるのは、何との位置関係による？', ['太陽と月', '月と北極星', '月と雲', '月と地平線'], '月の形の見え方は、太陽と月の位置関係によってかわります。', 'moon'],
+  ['6年', '夕方、太陽がしずむ西の空のそばに見える細い月は？', ['三日月', '満月', '下弦（かげん）の月', '新月'], '三日月は太陽の近くにあるので、夕方の西の空に見え、すぐにしずみます。'],
+  ['6年', '夕方、東の空からのぼってくる月の形は？', ['満月', '三日月', '上弦（じょうげん）の月', '新月'], '満月は太陽と反対の方向にあるので、太陽がしずむころ東からのぼります。'],
+  ['6年', '夕方、南の空に見える半月。光っているのは右と左のどっち？', ['右', '左', '上', '下'], '夕方、太陽は西（南を向いて右）にあります。月の光っている側に太陽があるので、右が光ります。'],
+  ['6年', '昼間の月を観察するとき、ぜったいにしてはいけないことは？', ['太陽を直接見る', '方位磁針を使う', '木を目じるしにする', '時刻を記録する'], '太陽を直接見ると目をいためます。月の位置と太陽の方向をたしかめるときも、太陽は見ないようにします。']
+];
+const KIHON_CONS = ['Lyr', 'Aql', 'Cyg', 'Sco', 'Ori'];
 const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 const pick = (arr, n, not) => shuffle(arr.filter(x => !not || !not.includes(x))).slice(0, n);
 const CONCEPT = [
-  ['星は、時間がたつとどのように動く？', ['東から南を通って西へ', '西から南を通って東へ', '北から南へ', '動かない'], '星は太陽と同じように、東からのぼり、南の空を通って西へしずみます。'],
+  ['南の空の星は、時間がたつとどのように動く？', ['東から南を通って西へ', '西から南を通って東へ', '北から南へ', '動かない'], '南の空の星は、太陽と同じように、東からのぼり、南の空を通って西へしずみます。'],
   ['北の空で、ほとんど動かない星は？', ['北極星', 'シリウス', 'ベガ', 'アンタレス'], '北極星は真北にあって、ほとんど動きません。ほかの北の星は、北極星のまわりをまわります。'],
   ['1等星と3等星、明るく見えるのはどっち？', ['1等星', '3等星', '同じ', '日によってちがう'], '数が小さいほど明るい星です。'],
-  ['時間がたつと、星座の形はどうなる？', ['かわらない', '大きくなる', 'さかさまの形になる', 'ばらばらになる'], '位置はかわりますが、星のならび方（形）はかわりません。'],
+  ['時間がたつと、星座の形はどうなる？', ['かわらない', '大きくなる', '星と星の間が広がる', 'ばらばらになる'], '位置はかわりますが、星のならび方（形）はかわりません。'],
   ['夏の大三角に入っていない星は？', ['アンタレス', 'ベガ', 'デネブ', 'アルタイル'], '夏の大三角は、ベガ・デネブ・アルタイル。アンタレスはさそり座の赤い星です。'],
   ['月が光って見えるのはなぜ？', ['太陽の光をはね返しているから', '自分で光っているから', '地球の光が当たるから', '星の光を集めているから'], '月は自分では光りません。太陽の光が当たっている所が光って見えます。'],
   ['冬の大三角に入っている星は？', ['シリウス', 'ベガ', 'スピカ', 'アンタレス'], '冬の大三角は、ベテルギウス・プロキオン・シリウスです。'],
   ['夕方、東の空からのぼってくる月の形は？', ['満月', '三日月', '上弦（じょうげん）の月', '新月'], '満月は太陽の反対側にあるので、太陽がしずむころ東からのぼります。']
 ];
-function makeQuiz() {
+function makeQuiz(level) {
   const qs = [];
+  if (level === 'kihon') {
+    pick(KIHON_CONS, 3).forEach(id => { const c = OBJ[id]; qs.push({ type: 'shape', con: id, tag: '4年', q: '光っている線の星座はどれ？', ch: shuffle([c.name, ...pick(KIHON_CONS.filter(x => x !== id), 3).map(x => OBJ[x].name)]), ans: c.name, exp: `${c.name}です。${SEASON_NAME[c.season]}の夜に見えます。` }); });
+    const used = new Set();
+    shuffle(KIHON.slice()).filter(k => { if (k[5] && used.has(k[5])) return false; if (k[5]) used.add(k[5]); return true; }).slice(0, 7).forEach(k => qs.push({ type: 'text', tag: k[0], q: k[1], ch: shuffle(k[2].slice()), ans: k[2][0], exp: k[3], show: k[4] && OBJ[k[4]] && OBJ[k[4]].pos ? k[4] : null }));
+    return shuffle(qs);
+  }
   pick(CONS, 4).forEach(c => qs.push({ type: 'shape', con: c.id, q: '光っている線の星座はどれ？', ch: shuffle([c.name, ...pick(CONS, 3, [c]).map(x => x.name)]), ans: c.name, exp: c.story }));
   const named = STARS.filter(s => !s.cluster);
   [['赤', '赤っぽく見える星はどれ？', ['白', '青白']], ['青白', '青白く見える星はどれ？', ['赤', 'オレンジ', '黄']]].forEach(([col, qq, others]) => {
@@ -869,17 +911,26 @@ function makeQuiz() {
   pick(CONCEPT, 2).forEach(c => qs.push({ type: 'text', q: c[0], ch: shuffle(c[1].slice()), ans: c[1][0], exp: c[2] }));
   return shuffle(qs);
 }
-function startQuiz() {
+function startQuiz(level) {
   closeSheet(); stopFlyTarget();
-  S.quiz = { i: 0, score: 0, qs: makeQuiz(), saved: { yaw: S.yaw, pitch: S.pitch, fov: S.fov } };
-  $('#quizBox').style.display = 'block'; setNav('quiz'); showQ();
+  const saved = S.quiz && S.quiz.saved || { yaw: S.yaw, pitch: S.pitch, fov: S.fov };
+  $('#quizBox').style.display = 'block'; setNav('quiz');
+  if (!level) {
+    S.quiz = { choosing: true, saved };
+    $('#quizBox').innerHTML = `<div class="qn"><span>クイズ</span><button id="qEnd" style="color:var(--sub);font-weight:700">やめる</button></div><div class="q">どちらにする？</div>
+    <div class="choices"><button id="lvK">きほん<br><small style="font-size:14px;color:var(--sub)">4年・6年の理科で習うこと</small></button><button id="lvC">チャレンジ<br><small style="font-size:14px;color:var(--sub)">いろいろな星座やお話</small></button></div>`;
+    $('#lvK').onclick = () => startQuiz('kihon'); $('#lvC').onclick = () => startQuiz('challenge'); $('#qEnd').onclick = endQuiz;
+    return;
+  }
+  S.quiz = { i: 0, score: 0, level, qs: makeQuiz(level), saved };
+  showQ();
 }
 function stopFlyTarget() { S.target = null; S.targetActive = false; $('#targetChip').style.display = 'none'; }
 function showQ() {
   const z = S.quiz, q = z.qs[z.i]; z.answered = false; S.quizCon = null;
   if (q.type === 'shape') { S.quizCon = q.con; const c = conCenter[q.con], a = ASTRO.altAz(c.ra, c.dec, S.time, S.lat, S.lon); flyTo(a.az, a.alt - (RAIL.matches ? 0 : 12), 80); }
   const box = $('#quizBox');
-  box.innerHTML = `<div class="qn"><span>${z.i + 1} / ${z.qs.length} もん</span><button id="qEnd" style="color:var(--sub);font-weight:700">やめる</button></div><div class="q">${esc(q.q)}</div><div class="choices">${q.ch.map(c => `<button>${esc(c)}</button>`).join('')}</div><div id="qExp"></div>`;
+  box.innerHTML = `<div class="qn"><span>${z.i + 1} / ${z.qs.length} もん${q.tag ? `<b style="margin-left:8px;color:var(--gold)">${q.tag.includes('発展') ? '4年の発展' : q.tag + 'で習う'}</b>` : ''}</span><button id="qEnd" style="color:var(--sub);font-weight:700">やめる</button></div><div class="q">${esc(q.q)}</div><div class="choices">${q.ch.map(c => `<button>${esc(c)}</button>`).join('')}</div><div id="qExp"></div>`;
   box.querySelectorAll('.choices button').forEach(b => b.onclick = () => answer(b));
   $('#qEnd').onclick = endQuiz;
 }
@@ -887,7 +938,7 @@ function answer(b) {
   const z = S.quiz, q = z.qs[z.i]; if (z.answered) return; z.answered = true;
   const ok = b.textContent === q.ans; if (ok) z.score++;
   $('#quizBox').querySelectorAll('.choices button').forEach(x => { if (x.textContent === q.ans) x.classList.add('ok'); else if (x === b) x.classList.add('ng'); });
-  if (q.show) { const p = OBJ[q.show].pos(), a = ASTRO.altAz(p.ra, p.dec, S.time, S.lat, S.lon); flyTo(a.az, a.alt, 60); ringAt = eq(p.ra, p.dec, R); }
+  if (q.show && OBJ[q.show].kind !== 'tip') { const p = OBJ[q.show].pos(), a = ASTRO.altAz(p.ra, p.dec, S.time, S.lat, S.lon); flyTo(a.az, a.alt, 60); ringAt = eq(p.ra, p.dec, R); }
   S.quizReveal = q.type === 'shape' ? q.con : null;
   $('#qExp').innerHTML = `<p class="exp"><b style="color:${ok ? 'var(--green)' : 'var(--gold)'}">${ok ? 'せいかい！' : 'こたえは「' + esc(q.ans) + '」'}</b> ${esc(q.exp)}</p><div class="btns"><button class="btn main" id="qNext">${z.i + 1 < z.qs.length ? 'つぎへ' : 'けっかを見る'}</button></div>`;
   $('#qNext').onclick = () => { ringAt = null; S.quizReveal = null; z.i++; if (z.i < z.qs.length) showQ(); else showResult(); };
@@ -895,8 +946,9 @@ function answer(b) {
 function showResult() {
   const z = S.quiz; S.quizCon = null;
   const msg = z.score >= 9 ? '星のはかせだね！' : z.score >= 6 ? 'よく知っているね！' : z.score >= 3 ? '星となかよくなってきたね。' : 'これから星を見るのが楽しみだね。';
-  $('#quizBox').innerHTML = `<div class="q" style="text-align:center;font-size:24px">${z.qs.length}もん中 ${z.score}もん せいかい</div><p style="text-align:center;font-size:18px">${msg}</p><div class="btns"><button class="btn main" id="qAgain">もう一回</button><button class="btn" id="qEnd2">おわる</button></div>`;
-  $('#qAgain').onclick = () => { S.quiz = null; startQuiz(); };
+  $('#quizBox').innerHTML = `<div class="q" style="text-align:center;font-size:24px">${z.qs.length}もん中 ${z.score}もん せいかい</div><p style="text-align:center;font-size:18px">${msg}</p><div class="btns"><button class="btn main" id="qAgain">もう一回</button><button class="btn" id="qOther">${z.level === 'kihon' ? 'チャレンジへ' : 'きほんへ'}</button><button class="btn" id="qEnd2">おわる</button></div>`;
+  $('#qAgain').onclick = () => startQuiz(z.level);
+  $('#qOther').onclick = () => startQuiz(z.level === 'kihon' ? 'challenge' : 'kihon');
   $('#qEnd2').onclick = endQuiz;
 }
 function endQuiz() {
