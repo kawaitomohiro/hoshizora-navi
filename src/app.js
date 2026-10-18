@@ -21,6 +21,8 @@ const S = {
   magLim: store.get('magLim', 4.5),
   allLines: store.get('allLines', false),
   showAst: store.get('showAst', true),
+  lines: store.get('lines', store.get('allLines', false) ? 'all' : 'feat'),
+  nameCon: store.get('nameCon', store.get('showNames', true)), nameStar: store.get('nameStar', store.get('showNames', true)), namePl: store.get('namePl', store.get('showNames', true)), showDir: store.get('showDir', true),
   showNames: store.get('showNames', true),
   seeThru: store.get('seeThru', false),
   azNudge: store.get('azNudge', 0),
@@ -643,7 +645,7 @@ function setTime(t) { S.live = false; S.time = t; timeBase = new Date(t); const 
 function showBT() { const e = $('#bt'); if (e) e.textContent = fmtDate(S.time) + ' ' + fmtTime(S.time); }
 function updateTimeChip() {
   $('#timeText').textContent = (innerWidth < 480 ? (S.time.getMonth() + 1) + '/' + S.time.getDate() : fmtDate(S.time)) + ' ' + fmtTime(S.time);
-  const b = $('#liveBadge'); b.textContent = S.live ? 'いま' : S.play ? '早送り' : innerWidth < 480 ? '別の時間' : 'ちがう時間'; b.classList.toggle('off', !S.live);
+  const b = $('#liveBadge'); b.textContent = S.live ? 'いま' : S.play ? '早送り' : innerWidth < 480 ? '別の時間' : 'ちがう時間'; b.classList.toggle('off', !S.live); b.classList.toggle('play', !!S.play); $('#timeChip').classList.toggle('off', !S.live);
 }
 
 function openPlace() {
@@ -680,17 +682,36 @@ function openSettings() {
   const seg = (key, opts) => `<div class="seg">${opts.map(o => `<button data-k="${key}" data-v='${JSON.stringify(o[0])}' class="${S[key] === o[0] ? 'on' : ''}">${o[1]}</button>`).join('')}</div>`;
   let h = `<h2>せってい</h2>
   <div class="set"><div>星の数</div>${seg('magLim', [[3.5, 'すくない'], [4.5, 'ふつう'], [5, 'おおい']])}</div>
-  <div class="set"><div>星座の線</div>${seg('allLines', [[false, 'えらんだ20の星座'], [true, 'ぜんぶ（88星座）']])}</div>
-  <div class="set"><div>星のならび（大三角など）の線</div>${seg('showAst', [[true, '見せる'], [false, '見せない']])}</div>
-  <div class="set"><div>名前</div>${seg('showNames', [[true, '見せる'], [false, 'かくす']])}</div>
+  <div class="btns"><button class="btn main" id="toView">線や名前の見せ方を変える</button></div>
   <div class="set"><div>地面</div>${seg('seeThru', [[false, 'ふつう'], [true, 'すかして地平線の下も見る']])}</div>
   <div class="btns"><button class="btn" id="clrSt">スタンプをぜんぶ消す</button></div>
   <p class="small">星の位置・明るさ・色・星座の線：d3-celestial のデータ（ヒッパルコス星表をもとにしたもの）。Copyright (c) 2015, Olaf Frohn. All rights reserved. BSD 3-Clause License（全文は下）。<br>惑星：NASA JPL の軌道の数字から計算。月：Meeus の計算方法。どれも、およそ0.5°以内のずれです。月と太陽は見やすいように大きめにかいています。<br>場所の情報は、星の見え方の計算だけに使い、どこにも送りません。</p><details class="small"><summary>d3-celestial のライセンス（英語）</summary><pre style="white-space:pre-wrap;font-size:12px">${esc(LICENSE_D3)}</pre></details>`;
   openSheet(h, 'set');
   sb.querySelectorAll('[data-k]').forEach(b => b.onclick = () => { const k = b.dataset.k; S[k] = JSON.parse(b.dataset.v); store.set(k, S[k]); applySettings(); openSettings(); });
+  $('#toView').onclick = openView;
   $('#clrSt').onclick = () => ask('スタンプをぜんぶ消しますか？<br>もとにはもどせません。', [['消す', () => { for (const k in stamps) delete stamps[k]; store.set('stamps', stamps); toast('消しました。'); }], ['やめる', null]]);
 }
-function applySettings() { starMat.uniforms.magLim.value = S.magLim; minorGroup.visible = S.allLines; }
+function applySettings() { starMat.uniforms.magLim.value = S.magLim; minorGroup.visible = S.lines === 'all'; }
+// 見え方：線や名前を、見せたいものだけにする（おすとすぐ空がかわる）
+function openView() {
+  const seg = (key, opts) => `<div class="seg">${opts.map(o => `<button data-k="${key}" data-v='${JSON.stringify(o[0])}' class="${S[key] === o[0] ? 'on' : ''}">${o[1]}</button>`).join('')}</div>`;
+  const onoff = [[true, '見せる'], [false, 'かくす']];
+  let h = `<h2>見え方</h2><p class="small">見せたいものだけにできます。おすと、すぐに空がかわります。</p>
+  <div class="btns"><button class="btn" id="vStar">星だけにする</button><button class="btn" id="vAll">ぜんぶ見せる</button></div>
+  <div class="set"><div>星座の線</div>${seg('lines', [['none', '出さない'], ['feat', '20の星座'], ['all', 'ぜんぶ（88）']])}</div>
+  ${typeof ARTS !== 'undefined' ? `<div class="set"><div>星座の絵</div>${seg('showArt', [[false, 'えらんだ星座だけ'], [true, 'ぜんぶ見せる']])}</div>` : ''}
+  <div class="set"><div>星座の名前</div>${seg('nameCon', onoff)}</div>
+  <div class="set"><div>星の名前</div>${seg('nameStar', onoff)}</div>
+  <div class="set"><div>惑星と月の名前</div>${seg('namePl', onoff)}</div>
+  <div class="set"><div>星のならび（大三角など）</div>${seg('showAst', onoff)}</div>
+  <div class="set"><div>方角（東・西・南・北）</div>${seg('showDir', onoff)}</div>
+  <p class="small">かくしていても、さがした星や星座は光って出ます。名前をかくしている間は、星座は「さがす」から選べます。</p>`;
+  openSheet(h, 'view');
+  const setAll = v => { Object.entries(v).forEach(([k, x]) => { S[k] = x; store.set(k, x); }); applySettings(); openView(); };
+  sb.querySelectorAll('[data-k]').forEach(b => b.onclick = () => { const k = b.dataset.k; S[k] = JSON.parse(b.dataset.v); store.set(k, S[k]); applySettings(); openView(); });
+  $('#vStar').onclick = () => setAll({ lines: 'none', nameCon: false, nameStar: false, namePl: false, showAst: false, showArt: false });
+  $('#vAll').onclick = () => setAll({ lines: 'feat', nameCon: true, nameStar: true, namePl: true, showAst: true, showDir: true });
+}
 
 /* ---------- 月の形と動き（3Dの模型） ---------- */
 let moonR = null;
@@ -700,7 +721,7 @@ function openMoon() {
   let h = `<h2>月の形と動き</h2><div class="moonRow"><canvas id="mNow" width="220" height="220"></canvas><div><div style="font-size:20px;font-weight:900">${moonName(ph)}</div><div class="small">新月から${Math.round(ph.age)}日ごろの月</div>
   <div class="small" style="margin-top:6px">${a.alt > 0 ? `いまは<b style="color:#fff">${dirName(a.az)}の空</b>` : 'いまは地平線の下'}</div>
   <div class="small">${times}</div></div></div>
-  <div class="set"><div>うちゅうから見ると（ゆびで回せます）</div></div><div class="small">大きさときょりは、本当とはちがいます。</div><div id="moonHolder"></div>
+  <div class="set"><div>うちゅうから見ると</div></div><div class="small">月を指でつかんで、地球のまわりを回してみよう。ほかの所を動かすと、見る向きがかわります。</div><div class="small">大きさときょりは、本当とはちがいます。</div><div id="moonHolder"></div>
   <input type="range" id="mAge" min="0" max="29.5" step="0.1" value="${ph.age.toFixed(1)}" aria-label="月齢">
   <div class="moonRow" style="margin-top:0"><canvas id="mSee" width="160" height="160" style="width:80px;height:80px"></canvas><div class="small" id="mSeeT"></div></div>
   <p class="small">月は地球のまわりをまわっています。太陽の光が当たっている半分だけが光るので、地球から見ると形がかわって見えます。形は、約30日（およそ1か月）でもとにもどります。月も、東からのぼって南を通り、西へしずみます。</p>
@@ -760,9 +781,23 @@ function initMoonModel(age) {
     const lM = mk('月', '#fff4cf'); sc.add(lM);
     moonR = { r, sc, cam, earth, moon, lM, th: 1.75, ph: 0.95, age };
     const ptr = { on: false };
-    cv.addEventListener('pointerdown', e => { ptr.on = true; ptr.x = e.clientX; ptr.y = e.clientY; cv.setPointerCapture(e.pointerId); });
-    cv.addEventListener('pointermove', e => { if (!ptr.on) return; moonR.th -= (e.clientX - ptr.x) * 0.01; moonR.ph = Math.max(0.1, Math.min(1.45, moonR.ph - (e.clientY - ptr.y) * 0.01)); ptr.x = e.clientX; ptr.y = e.clientY; drawMoonModel(); });
-    cv.addEventListener('pointerup', () => { ptr.on = false; });
+    const rc = new THREE.Raycaster(), plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hit = new THREE.Vector3();
+    const ndc = e => { const b = cv.getBoundingClientRect(); return new THREE.Vector2((e.clientX - b.left) / b.width * 2 - 1, -((e.clientY - b.top) / b.height) * 2 + 1); };
+    const onMoon = e => { const b = cv.getBoundingClientRect(), p = moonR.moon.position.clone().project(moonR.cam); return Math.hypot((p.x + 1) / 2 * b.width - (e.clientX - b.left), (1 - p.y) / 2 * b.height - (e.clientY - b.top)) < 44; };
+    // 月をつかんだら、指のある方向へ月を動かす（地球から見た形もいっしょにかわる）
+    const moveMoon = e => {
+      rc.setFromCamera(ndc(e), moonR.cam); if (!rc.ray.intersectPlane(plane, hit)) return;
+      let el = Math.atan2(-hit.z, hit.x); if (el < 0) el += Math.PI * 2;
+      moonR.age = el / (Math.PI * 2) * 29.530589; const sl = $('#mAge'); if (sl) sl.value = moonR.age.toFixed(1); drawMoonModel();
+    };
+    cv.addEventListener('pointerdown', e => { ptr.on = true; ptr.moon = onMoon(e); ptr.x = e.clientX; ptr.y = e.clientY; cv.setPointerCapture(e.pointerId); cv.style.cursor = ptr.moon ? 'grabbing' : 'move'; if (ptr.moon) moveMoon(e); });
+    cv.addEventListener('pointermove', e => {
+      if (!ptr.on) { cv.style.cursor = onMoon(e) ? 'grab' : 'move'; return; }
+      if (ptr.moon) { moveMoon(e); return; }
+      moonR.th -= (e.clientX - ptr.x) * 0.01; moonR.ph = Math.max(0.1, Math.min(1.45, moonR.ph - (e.clientY - ptr.y) * 0.01)); ptr.x = e.clientX; ptr.y = e.clientY; drawMoonModel();
+    });
+    const release = () => { ptr.on = false; ptr.moon = false; cv.style.cursor = 'move'; };
+    ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(n => cv.addEventListener(n, release));
   } else { moonR.r.setPixelRatio(Math.min(devicePixelRatio || 1, 2)); }
   moonR.r.setSize(w, h, false); moonR.cam.aspect = w / h; moonR.cam.updateProjectionMatrix();
   moonR.age = age;
@@ -855,6 +890,7 @@ document.querySelectorAll('#nav button').forEach(b => b.onclick = () => {
 $('#placeChip').onclick = openPlace;
 $('#timeChip').onclick = openTime;
 $('#setChip').onclick = openSettings;
+$('#viewChip').onclick = () => sheetKind === 'view' ? closeSheet() : openView();
 $('#toNight').onclick = () => { const t = new Date(S.time); if (t.getHours() < 12) t.setDate(t.getDate() - 1); t.setHours(20, 0, 0, 0); setTime(t); toast('夜8時の空にしました。'); };
 
 /* ---------- 小さなお知らせ ---------- */
@@ -904,10 +940,11 @@ function frame(now) {
   for (const id in conMesh) {
     const m = conMesh[id].material, on = id === hl;
     m.color.set(on ? 0xffd54a : 0x6fa8ff); m.opacity = on ? 1 : S.quiz ? 0.35 : 0.75;
+    conMesh[id].visible = on || S.lines !== 'none';
   }
   const ha = S.target && OBJ[S.target] && OBJ[S.target].kind === 'ast' ? S.target : null;
   for (const id in astMesh) { astMesh[id].visible = !S.quiz && (S.showAst || id === ha); astMesh[id].material.opacity = id === ha ? 0.95 : 0.45; astMesh[id].material.color.set(id === ha ? 0xffd54a : 0xff8fc0); }
-  minorGroup.visible = S.allLines && !S.quiz;
+  minorGroup.visible = S.lines === 'all' && !S.quiz;
   const tgtBelow = S.target && OBJ[S.target] && OBJ[S.target].kind !== 'tip' && altAzOf(OBJ[S.target]).alt < 0;
   groundMat.opacity = S.quiz || S.seeThru || tgtBelow ? 0.45 : S.cam ? 0.35 : 0.9;
   // 月の光っている側を太陽へ向ける
@@ -925,9 +962,14 @@ function updateLabels() {
   const W = innerWidth, H = innerHeight;
   labels.forEach(L => {
     let show = true;
-    if (L.minor && !S.allLines) show = false;
+    if (L.minor && S.lines !== 'all') show = false;
     if (L.ast && !S.showAst && L.id !== S.target) show = false;
-    if (!S.showNames && !L.cls.startsWith('dir') && L.id !== S.target) show = false;
+    if (L.id !== S.target) {
+      if (L.cls.startsWith('con') && !S.nameCon) show = false;
+      if (L.cls === 'star' && !S.nameStar) show = false;
+      if ((L.cls === 'planet' || L.cls === 'moon' || L.cls === 'sun') && !S.namePl) show = false;
+    }
+    if (L.cls.startsWith('dir') && !S.showDir) show = false;
     if (S.quiz && !L.cls.startsWith('dir') && !(S.quizReveal && L.id === S.quizReveal)) show = false;
     if (L.id === 'sun' && sunAlt < -2 && S.target !== 'sun') show = false;
     let p = null;
