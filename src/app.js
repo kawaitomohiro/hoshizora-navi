@@ -433,7 +433,10 @@ function sensorQuat() {
     bodyQ.setFromEuler(eul).multiply(q1);
     const top = new THREE.Vector3(0, 1, 0).applyQuaternion(bodyQ), back = new THREE.Vector3(0, 0, -1).applyQuaternion(bodyQ);
     const land = Math.abs(screenAngle()) % 180 === 90;
-    const ref = land ? (Math.abs(top.y) < 0.5 ? top : null) : (Math.abs(back.y) < 0.85 ? back : null);
+    // たて持ちで地平線より上へ向けると、iPhone・iPadのコンパスは本体の上のはし（手前にかたむく）の向きに切りかわり、180°反対の値になる。
+    // そこで、たて持ちは「地平線から少し下（3°〜44°）・左右にかたむけていない」間だけ合わせ直し、見上げている間は合わせた値のまま、本体の回転だけで追う
+    const side = new THREE.Vector3(1, 0, 0).applyQuaternion(bodyQ); // 左右へのかたむき
+    const ref = land ? (Math.abs(top.y) < 0.5 ? top : null) : (back.y > -0.7 && back.y < -0.05 && Math.abs(side.y) < 0.35 ? back : null);
     if (ref) {
       const azRaw = Math.atan2(ref.x, -ref.z) * R2D;
       let off = ASTRO.norm(ori.head - azRaw);
@@ -458,7 +461,7 @@ async function startSensor() {
     if (!ori) { removeEventListener('deviceorientationabsolute', onOri); removeEventListener('deviceorientation', onOri); toast('このタブレットには、向きをはかるしくみがないようです。<br>指で空を動かして見てね。'); return; }
     S.sensor = true; fly = null;
     $('#sensorBtn').classList.add('on'); $('#nudge').style.display = 'flex'; S.azNudge = store.get(nudgeKey(), 0); showNudge(); $('#sensorBar').style.display = 'flex'; $('#cross').style.display = 'block';
-    toast('タブレットを空にかざしてね。<br>ずれていたら、右のボタンで直せます。', 3200);
+    toast('はじめに、タブレットを前（地平線のほう）に向けてね。<br>前に向けると方角がきまるよ。', 3600);
   }, 1200);
 }
 function stopSensor() {
@@ -1043,7 +1046,7 @@ let lastT = performance.now(), lastSky = 0, foundShown = false;
 function resize() { renderer.setSize(innerWidth, innerHeight, false); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); if (S.cam) camFov(); }
 addEventListener('resize', resize);
 addEventListener('orientationchange', () => setTimeout(resize, 300)); // iPadは回した直後の大きさが遅れて変わる
-const onTurn = () => { iosOffset = null; S.azNudge = store.get(nudgeKey(), 0); showNudge(); }; // 持ちかえたら、コンパスの合わせ直しと方角なおしを切りかえる
+const onTurn = () => { S.azNudge = store.get(nudgeKey(), 0); showNudge(); }; // 持ちかえたら、コンパスの合わせ直しと方角なおしを切りかえる
 if (screen.orientation && screen.orientation.addEventListener) screen.orientation.addEventListener('change', onTurn); else addEventListener('orientationchange', onTurn);
 function frame(now) {
   requestAnimationFrame(frame);
@@ -1092,6 +1095,8 @@ function frame(now) {
 }
 function updateLabels() {
   camera.getWorldDirection(fwd);
+  const unset = S.sensor && ori && ori.head != null && !absMode && iosOffset == null;
+  $('#labels').style.visibility = unset ? 'hidden' : '';
   const W = innerWidth, H = innerHeight;
   labels.forEach(L => {
     let show = true;
@@ -1151,7 +1156,8 @@ function updateLabels() {
 }
 function updateHud() {
   const az = ASTRO.norm(Math.atan2(fwd.x, -fwd.z) * R2D), alt = Math.asin(Math.max(-1, Math.min(1, fwd.y))) * R2D;
-  const t = `<b>${dirName(az)}</b>の空 ・ 高さ${Math.round(alt)}°`;
+  const waiting = S.sensor && ori && ori.head != null && !absMode && iosOffset == null;
+  const t = waiting ? '<b>前（地平線のほう）に向けてね</b>' : `<b>${dirName(az)}</b>の空 ・ 高さ${Math.round(alt)}°`;
   if (updateHud.l !== t) { $('#hud').innerHTML = t; updateHud.l = t; }
 }
 
