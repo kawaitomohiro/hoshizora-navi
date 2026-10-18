@@ -25,7 +25,7 @@ const S = {
   nameCon: store.get('nameCon', store.get('showNames', true)), nameStar: store.get('nameStar', store.get('showNames', true)), namePl: store.get('namePl', store.get('showNames', true)), showDir: store.get('showDir', true),
   showNames: store.get('showNames', true),
   seeThru: store.get('seeThru', false),
-  azNudge: store.get('azNudge', 0),
+  azNudge: (() => { const v = store.get('azNudge', 0); if (!store.get('nudgeV2', false)) { store.set('nudgeV2', true); if (Math.abs(v) > 45) { store.set('azNudge', 0); return 0; } } return v; })(),
   target: null, quiz: null, play: 0, quizCon: null
 };
 const stamps = store.get('stamps', {});
@@ -372,17 +372,25 @@ function stepFly(now) {
 // センサー
 let ori = null, iosOffset = null, absMode = false;
 const q0 = new THREE.Quaternion(), q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)), zee = new THREE.Vector3(0, 0, 1), yAx = new THREE.Vector3(0, 1, 0), eul = new THREE.Euler();
-const devQ = new THREE.Quaternion(), tq = new THREE.Quaternion();
+const devQ = new THREE.Quaternion(), tq = new THREE.Quaternion(), bodyQ = new THREE.Quaternion();
+// 方角なおしは、たて持ちと横持ちで別々に覚える（ずれ方がちがうことがあるため）
+const screenAngle = () => (screen.orientation && screen.orientation.angle) || window.orientation || 0;
+const nudgeKey = () => Math.abs(screenAngle()) % 180 === 90 ? 'azNudgeL' : 'azNudge';
+const showNudge = () => { const e = $('#nVal'); if (e) e.textContent = (S.azNudge > 0 ? '+' : '') + S.azNudge + '°'; };
 function onOri(e) { if (e.alpha == null) return; if (e.type === 'deviceorientationabsolute' || e.absolute) absMode = true; else if (absMode) return; ori = { a: e.alpha, b: e.beta, g: e.gamma, head: e.webkitCompassHeading }; }
 function sensorQuat() {
-  const orient = (screen.orientation && screen.orientation.angle) || window.orientation || 0;
+  const orient = screenAngle();
   eul.set(ori.b * D2R, ori.a * D2R, -ori.g * D2R, 'YXZ');
   devQ.setFromEuler(eul).multiply(q1).multiply(q0.setFromAxisAngle(zee, -orient * D2R));
   let corr = -DECL + S.azNudge;
   if (ori.head != null && !absMode) {
-    const f = new THREE.Vector3(0, 0, -1).applyQuaternion(devQ);
-    if (Math.abs(f.y) < 0.85) {
-      const azRaw = Math.atan2(f.x, -f.z) * R2D;
+    // たて持ち：コンパスはカメラの向き（back）。横持ち：本体の上のはし（top）の向き。急な角度のときは合わせ直さない
+    bodyQ.setFromEuler(eul).multiply(q1);
+    const top = new THREE.Vector3(0, 1, 0).applyQuaternion(bodyQ), back = new THREE.Vector3(0, 0, -1).applyQuaternion(bodyQ);
+    const land = Math.abs(screenAngle()) % 180 === 90;
+    const ref = land ? (Math.abs(top.y) < 0.5 ? top : null) : (Math.abs(back.y) < 0.85 ? back : null);
+    if (ref) {
+      const azRaw = Math.atan2(ref.x, -ref.z) * R2D;
       let off = ASTRO.norm(ori.head - azRaw);
       if (iosOffset == null) iosOffset = off; else { let d = off - iosOffset; d = ((d + 540) % 360) - 180; iosOffset = ASTRO.norm(iosOffset + d * 0.05); }
     }
@@ -404,20 +412,34 @@ async function startSensor() {
     hideLoading();
     if (!ori) { removeEventListener('deviceorientationabsolute', onOri); removeEventListener('deviceorientation', onOri); toast('このタブレットには、向きをはかるしくみがないようです。<br>指で空を動かして見てね。'); return; }
     S.sensor = true; fly = null;
-    $('#sensorBtn').classList.add('on'); $('#nudge').style.display = 'flex'; $('#nVal').textContent = (S.azNudge > 0 ? '+' : '') + S.azNudge + '°'; $('#sensorBar').style.display = 'flex'; $('#cross').style.display = 'block';
+    $('#sensorBtn').classList.add('on'); $('#nudge').style.display = 'flex'; S.azNudge = store.get(nudgeKey(), 0); showNudge(); $('#sensorBar').style.display = 'flex'; $('#cross').style.display = 'block';
     toast('タブレットを空にかざしてね。<br>ずれていたら、右のボタンで直せます。', 3200);
   }, 1200);
 }
 function stopSensor() {
-  S.sensor = false; removeEventListener('deviceorientationabsolute', onOri); removeEventListener('deviceorientation', onOri);
+  S.sensor = false; endAlign(); removeEventListener('deviceorientationabsolute', onOri); removeEventListener('deviceorientation', onOri);
   ori = null; iosOffset = null; absMode = false;
   const f = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
   S.yaw = ASTRO.norm(Math.atan2(f.x, -f.z) * R2D); S.pitch = Math.max(-25, Math.asin(f.y) * R2D);
   if (S.cam) stopCam();
   $('#sensorBtn').classList.remove('on'); $('#nudge').style.display = 'none'; $('#sensorBar').style.display = 'none'; $('#cross').style.display = 'none';
 }
-const nudge = d => { S.azNudge = d === 0 ? 0 : ((S.azNudge + d + 540) % 360) - 180; store.set('azNudge', S.azNudge); $('#nVal').textContent = (S.azNudge > 0 ? '+' : '') + S.azNudge + '°'; };
-$('#nLL').onclick = () => nudge(-30); $('#nL').onclick = () => nudge(-5); $('#nR').onclick = () => nudge(5); $('#nRR').onclick = () => nudge(30); $('#n0').onclick = () => nudge(0);
+const nudge = d => { S.azNudge = Math.round(((S.azNudge + d + 540) % 360) - 180); store.set(nudgeKey(), S.azNudge); showNudge(); };
+// 方角あわせ：本物の星をまん中の＋に入れてから「合わせる」をおす
+let alignId = null;
+function startAlign(id) { alignId = id; S.target = null; S.targetActive = false; $('#targetChip').style.display = 'none'; // 矢印はアプリの中の位置を指すので、合わせる間は消す
+  $('#alignText').textContent = `本物の${OBJ[id].name}を、まん中の＋に入れてね`; $('#alignBar').style.display = 'flex'; }
+function endAlign() { alignId = null; $('#alignBar').style.display = 'none'; }
+$('#alignNo').onclick = endAlign;
+$('#alignOk').onclick = () => {
+  const o = OBJ[alignId]; if (!o || !S.sensor) return endAlign();
+  const f = new THREE.Vector3(); camera.getWorldDirection(f);
+  let d = altAzOf(o, new Date()).az - Math.atan2(f.x, -f.z) * R2D; d = Math.round(((d % 360) + 540) % 360 - 180);
+  if (d) nudge(d);
+  toast(`${esc(o.name)}で方角を合わせました。<br>（${d > 0 ? '+' : ''}${d}°）`); endAlign();
+};
+const nudgeReset = () => { S.azNudge = 0; store.set(nudgeKey(), 0); showNudge(); };
+$('#nLL').onclick = () => nudge(-30); $('#nL').onclick = () => nudge(-5); $('#nR').onclick = () => nudge(5); $('#nRR').onclick = () => nudge(30); $('#n0').onclick = nudgeReset;
 
 // カメラ
 let stream = null;
@@ -489,6 +511,7 @@ function stampBtn(id) {
 }
 function openInfo(id) {
   const o = OBJ[id]; if (!o) return;
+  if (alignId) endAlign();
   let h = `<h2>${esc(o.name)}</h2><div class="yomi">${esc(o.yomi.split(' ')[0])}</div><div class="tags">`;
   if (o.season) h += `<span class="tag">${o.season === 'all' ? '一年中見える' : SEASON_NAME[o.season] + 'の星座・星'}</span>`;
   if (o.kind === 'star') h += `<span class="tag">${o.cluster ? '星の集まり' : magName(o.mag)}</span><span class="tag"><i style="background:${COLOR_DOT[o.color]}"></i>${o.color}</span><span class="tag">${conName(o.con)}</span>`;
@@ -509,6 +532,7 @@ function openInfo(id) {
   if (o.kind === 'tip') { if (o.action) h += `<button class="btn main" data-a="tip">空で見てみる</button>`; }
   else if (o.kind !== 'sun') h += `<button class="btn main" data-a="find">空でさがす</button>`;
   if (o.kind === 'moon') h += `<button class="btn" data-a="moonp">月の形と動き</button>`;
+  if (S.sensor && S.live && ['star', 'planet', 'moon'].includes(o.kind) && altAzOf(o).alt > 0) h += `<button class="btn" data-a="align">この${o.kind === 'moon' ? '月' : '星'}で方角を合わせる</button>`;
   h += stampBtn(id) + '</div>';
   openSheet(h, 'info');
   sb.querySelectorAll('[data-a]').forEach(b => b.onclick = () => {
@@ -518,6 +542,7 @@ function openInfo(id) {
     if (a === 'unstamp') ask('このスタンプを消しますか？', [['消す', () => { delete stamps[id]; store.set('stamps', stamps); openInfo(id); }], ['やめる', null]]);
     if (a === 'moonp') openMoon();
     if (a === 'tip') doTip(o);
+    if (a === 'align') { closeSheet(); startAlign(id); }
   });
   if (o.kind !== 'tip') { setTarget(id, true); keepVisible(id); }
 }
@@ -921,6 +946,8 @@ let lastT = performance.now(), lastSky = 0, foundShown = false;
 function resize() { renderer.setSize(innerWidth, innerHeight, false); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); if (S.cam) camFov(); }
 addEventListener('resize', resize);
 addEventListener('orientationchange', () => setTimeout(resize, 300)); // iPadは回した直後の大きさが遅れて変わる
+const onTurn = () => { iosOffset = null; S.azNudge = store.get(nudgeKey(), 0); showNudge(); }; // 持ちかえたら、コンパスの合わせ直しと方角なおしを切りかえる
+if (screen.orientation && screen.orientation.addEventListener) screen.orientation.addEventListener('change', onTurn); else addEventListener('orientationchange', onTurn);
 function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.min(0.1, (now - lastT) / 1000); lastT = now;
