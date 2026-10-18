@@ -128,8 +128,17 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .prog{height:14px;border-radius:7px;background:rgba(255,255,255,.1);overflow:hidden;margin:6px 0 14px}
 .prog div{height:100%;background:linear-gradient(90deg,var(--pink),var(--gold));border-radius:7px}
 .vids{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px}
-.vid{display:flex;gap:10px;align-items:center;background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:10px 12px;color:var(--text);text-decoration:none;min-height:56px}
-.vid svg{width:32px;height:32px;flex:none}.vid span{display:flex;flex-direction:column;gap:2px}.vid b{font-size:16px}.vid small{font-size:13px;color:var(--sub)}
+.vid{display:flex;flex-direction:column;background:var(--panel2);border:1px solid var(--line);border-radius:14px;overflow:hidden;color:var(--text);text-decoration:none}
+.vthumb{position:relative;display:block;aspect-ratio:16/9;background:linear-gradient(135deg,#1b2a5c,#0b1430)}
+.vthumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.vthumb svg{position:absolute;left:50%;top:50%;width:52px;height:52px;margin:-26px 0 0 -26px;filter:drop-shadow(0 2px 6px rgba(0,0,0,.5))}
+.vt{display:flex;flex-direction:column;gap:2px;padding:8px 12px 10px}.vid b{font-size:16px}.vid small{font-size:13px;color:var(--sub)}
+.vid:active{transform:scale(.98)}
+/* 動画がある名前の ▶ */
+.vmark{display:inline-block;width:18px;height:18px;margin-left:5px;border-radius:50%;background:#e2577f;vertical-align:-2px;position:relative;box-shadow:0 0 6px rgba(0,0,0,.6)}
+.vmark::after{content:"";position:absolute;left:7px;top:4.5px;border-style:solid;border-width:4.5px 0 4.5px 7px;border-color:transparent transparent transparent #fff}
+.vmark.big{width:24px;height:24px;vertical-align:-5px}.vmark.big::after{left:9px;top:6px;border-width:6px 0 6px 9px}
+#labels.novid .vmark{display:none}
 /* じかん */
 .bigtime{font-size:30px;font-weight:900;text-align:center;margin:4px 0}
 .steps{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:10px 0}

@@ -22,6 +22,7 @@ const S = {
   allLines: store.get('allLines', false),
   showAst: store.get('showAst', true),
   lines: store.get('lines', store.get('allLines', false) ? 'all' : 'feat'),
+  showVid: store.get('showVid', true),
   nameCon: store.get('nameCon', store.get('showNames', true)), nameStar: store.get('nameStar', store.get('showNames', true)), namePl: store.get('namePl', store.get('showNames', true)), showDir: store.get('showDir', true),
   showNames: store.get('showNames', true),
   showArt: store.get('showArt', false),
@@ -329,6 +330,9 @@ STARS.forEach(s => { const d = HIP[s.hip], v = eq(d[0], d[1], R); const L = addL
 ASTERISMS.forEach(a => { const p = OBJ[a.id].pos(), v = eq(p.ra, p.dec, R); const L = addLabel(a.name, 'ast', () => v, 'sky', () => openInfo(a.id)); L.id = a.id; L.ast = true; });
 PLANETS.forEach(p => { const L = addLabel(p.name, 'planet', () => eq(body[p.id].ra, body[p.id].dec, R), 'sky', () => openInfo(p.id)); L.id = p.id; L.dy = 16; });
 { const L = addLabel('月', 'moon', () => eq(body.moon.ra, body.moon.dec, R), 'sky', () => openInfo('moon')); L.id = 'moon'; L.dy = 30; }
+// 動画がある物の名前に ▶ を付ける（名前をタップすると説明と動画が出る）
+// 星の名前には付けない（星のカードは星座の動画を出すため、付けたり付けなかったりで子どもが迷う）
+labels.forEach(L => { if (L.id && VIDEOS[L.id] && !L.minor && /^(con|ast|moon)/.test(L.cls)) L.el.insertAdjacentHTML('beforeend', '<span class="vmark" aria-hidden="true"></span>'); });
 { const L = addLabel('太陽', 'sun', () => eq(body.sun.ra, body.sun.dec, R), 'sky', () => openInfo('sun')); L.id = 'sun'; L.dy = 40; }
 
 /* ---------- 空の向きの計算 ---------- */
@@ -599,8 +603,10 @@ function videoHtml(id) {
   let keys = VIDEOS[id];
   if (!keys && OBJ[id] && OBJ[id].kind === 'star') keys = VIDEOS[OBJ[id].con];
   if (!keys || !keys.length) return '';
-  const yt = 'https://www.youtube.com/watch?v=';
-  return `<div class="set"><div>動画で見る</div></div><div class="vids">` + keys.map(k => { const v = VIDEO_LIST[k]; return `<a class="vid" href="${yt + v[0]}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#e2577f"/><path d="M10 7.5l7 4.5-7 4.5z" fill="#fff"/></svg><span><b>${esc(v[1])}</b><small>${esc(v[2])}・${esc(v[3])}</small></span></a>`; }).join('') + `</div><p class="small">YouTube がべつの画面でひらきます。おうちの人や先生といっしょに見よう。学校の端末では見られないことがあります。</p>`;
+  if (!S.showVid) return '';
+  const yt = 'https://www.youtube.com/watch?v=', img = 'https://i.ytimg.com/vi/';
+  const play = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#e2577f"/><path d="M10 7.5l7 4.5-7 4.5z" fill="#fff"/></svg>';
+  return `<div class="set"><div>動画で見る</div></div><div class="vids">` + keys.map(k => { const v = VIDEO_LIST[k]; return `<a class="vid" href="${yt + v[0]}" target="_blank" rel="noopener"><span class="vthumb"><img src="${img + v[0]}/mqdefault.jpg" alt="" loading="lazy" onerror="this.remove()">${play}</span><span class="vt"><b>${esc(v[1])}</b><small>${esc(v[2])}・${esc(v[3])}</small></span></a>`; }).join('') + `</div><p class="small">YouTube がべつの画面でひらきます。おうちの人や先生といっしょに見よう。学校の端末では見られないことがあります。（動画の絵はYouTubeから読みこみます。名前やGPSでしらべた場所は送りません）</p>`;
 }
 function openStar(i) {
   const s = SKY.stars[i], cid = SKY.conIds[s[4]], cn = cid ? conName(cid) : '';
@@ -742,9 +748,9 @@ function getGps(fromSheet) {
   if (!navigator.geolocation) { toast('このタブレットでは場所がわかりません。<br>町をえらんでね。'); return; }
   showLoading('いる場所をしらべています…');
   navigator.geolocation.getCurrentPosition(p => {
-    hideLoading(); setPlace('いまいる場所', Math.round(p.coords.latitude * 100) / 100, Math.round(p.coords.longitude * 100) / 100, !fromSheet);
+    hideLoading(); setPlace('いまいる場所', Math.round(p.coords.latitude * 100) / 100, Math.round(p.coords.longitude * 100) / 100, !fromSheet); if (!fromSheet) setTimeout(vidHint, 2400);
     toast('いる場所の空にしました。'); if (fromSheet) closeSheet();
-  }, () => { hideLoading(); toast('場所がわかりませんでした。<br>町をえらんでね。'); if (!fromSheet) openPlace(); }, { enableHighAccuracy: false, timeout: 10000, maximumAge: 600000 });
+  }, () => { hideLoading(); toast('場所がわかりませんでした。<br>町をえらんでね。'); if (!fromSheet) { openPlace(); vidHint(); } }, { enableHighAccuracy: false, timeout: 10000, maximumAge: 600000 });
 }
 
 function openStamps() {
@@ -772,7 +778,7 @@ function openSettings() {
   $('#toView').onclick = openView;
   $('#clrSt').onclick = () => ask('スタンプをぜんぶ消しますか？<br>もとにはもどせません。', [['消す', () => { for (const k in stamps) delete stamps[k]; store.set('stamps', stamps); toast('消しました。'); }], ['やめる', null]]);
 }
-function applySettings() { starMat.uniforms.magLim.value = S.magLim; minorGroup.visible = S.lines === 'all'; }
+function applySettings() { starMat.uniforms.magLim.value = S.magLim; minorGroup.visible = S.lines === 'all'; $('#labels').classList.toggle('novid', !S.showVid); }
 // 見え方：線や名前を、見せたいものだけにする（おすとすぐ空がかわる）
 function openView() {
   const seg = (key, opts) => `<div class="seg">${opts.map(o => `<button data-k="${key}" data-v='${JSON.stringify(o[0])}' class="${S[key] === o[0] ? 'on' : ''}">${o[1]}</button>`).join('')}</div>`;
@@ -786,6 +792,8 @@ function openView() {
   <div class="set"><div>惑星と月の名前</div>${seg('namePl', onoff)}</div>
   <div class="set"><div>星のならび（大三角など）</div>${seg('showAst', onoff)}</div>
   <div class="set"><div>方角（東・西・南・北）</div>${seg('showDir', onoff)}</div>
+  <div class="set"><div>動画（▶のしるしと、動画へのリンク）</div>${seg('showVid', onoff)}</div>
+  <p class="small">学校の端末でYouTubeが見られないときは「かくす」にしてください。</p>
   <p class="small">かくしていても、さがした星や星座は光って出ます。名前をかくしている間は、星座は「さがす」から選べます。</p>`;
   openSheet(h, 'view');
   const setAll = v => { Object.entries(v).forEach(([k, x]) => { S[k] = x; store.set(k, x); }); applySettings(); openView(); };
@@ -1202,17 +1210,30 @@ function aimStart() {
   if (sunAlt > -6) return;
   for (const a of ASTERISMS) { const h = altAzOf(OBJ[a.id]); if (h.alt > 20 && h.alt < 72) { S.yaw = h.az; S.pitch = Math.min(50, h.alt); return; } }
 }
+// はじめて空を見たときに一度だけ、動画があることを知らせる
+let vidHintDone = false;
+function vidHint(tries = 0) {
+  if (vidHintDone || !canSave || !S.showVid || store.get('vidHint', false)) return;
+  setTimeout(() => {
+    if (!S.showVid || !(S.nameCon || S.showAst)) return;   /* ▶が見えないときは出さない */
+    const busy = S.quiz || sheetKind || [$('#loading'), $('#start')].some(e => e.style.display !== 'none') || $('#dialog').style.display === 'flex';
+    if (busy) { if (tries < 8) vidHint(tries + 1); return; }   /* 読みこみ中・場所えらび・説明を見ている間は待つ */
+    vidHintDone = true;
+    toast('<span class="vmark big"></span> がついた星座の名前をタップすると、<br>お話や解説の動画も見られるよ。', 4500);
+    store.set('vidHint', true);
+  }, tries ? 3000 : 2500);
+}
 function boot() {
   resize(); applySettings();
   const pl = store.get('place', null);
-  if (pl) setPlace(pl[0], pl[1], pl[2]); else updateSky();
+  if (pl) { setPlace(pl[0], pl[1], pl[2]); vidHint(); } else updateSky();
   hideLoading();
   requestAnimationFrame(frame);
   aimStart();
   if (!pl) {
     $('#start').style.display = 'flex';
     $('#startGps').onclick = () => { $('#start').style.display = 'none'; getGps(false); };
-    $('#startTokyo').onclick = () => { $('#start').style.display = 'none'; setPlace('東京', 35.68, 139.69, true); };
+    $('#startTokyo').onclick = () => { $('#start').style.display = 'none'; setPlace('東京', 35.68, 139.69, true); vidHint(); };
   }
   window.__hzn = { S, ASTRO, sky, camera, OBJ, altAzOf, updateSky, openInfo, setTarget, labels, startQuiz };
 }
