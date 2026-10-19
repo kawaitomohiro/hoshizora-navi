@@ -1034,7 +1034,7 @@ const fsAble = () => { const el = document.documentElement; return !!(el.request
 const isIOS = /iP(hone|od|ad)/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
 function showHomeGuide() {
   const share = '<svg viewBox="0 0 24 24"><path d="M12 3v12M7.5 7.5 12 3l4.5 4.5M5 11v9h14v-9" fill="none" stroke="#ffd54a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-  ask(`アドレスバーのない、広い画面で使うには<ol><li>ブラウザの 共有ボタン ${share} をおす</li><li>「ホーム画面に追加」をえらぶ</li><li>ホーム画面にできた「ほしぞらナビ」から ひらく</li></ol><span style="font-size:15px;color:var(--sub)">ホーム画面から ひらくと、スタンプや場所の設定は べつになります。</span>`, [['わかった', null]]);
+  ask(`アドレスバーのない、広い画面で使うには<ol><li>ブラウザの 共有ボタン ${share} をおす</li><li>「ホーム画面に追加」をえらぶ</li><li>ホーム画面にできた「星空ナビ」から ひらく</li></ol><span style="font-size:15px;color:var(--sub)">ホーム画面から ひらくと、スタンプや場所の設定は べつになります。</span>`, [['わかった', null]]);
 }
 function toggleFullscreen() {
   if (fsElement()) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
